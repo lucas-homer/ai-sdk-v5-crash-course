@@ -5,7 +5,7 @@ const model = google('gemini-2.0-flash');
 
 const stream = streamText({
   model,
-  prompt: 'Give me a sonnet about a cat called Steven.',
+  prompt: 'Give me a breakdown of the history of coffee',
 });
 
 for await (const chunk of stream.toUIMessageStream()) {
