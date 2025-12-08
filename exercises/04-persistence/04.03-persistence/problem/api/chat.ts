@@ -22,12 +22,14 @@ export const POST = async (req: Request): Promise<Response> => {
 		});
 	}
 
-	const chat = TODO; // TODO: Get the existing chat
+	const chat = await getChat(id);
 
 	if (!chat) {
 		// TODO: If the chat doesn't exist, create it with the id
+		await createChat(id);
 	} else {
 		// TODO: Otherwise, append the most recent message to the chat
+		await appendToChatMessages(id, messages);
 	}
 
 	// TODO: wait for the stream to finish and append the
@@ -37,7 +39,11 @@ export const POST = async (req: Request): Promise<Response> => {
 		messages: convertToModelMessages(messages),
 	});
 
-	return result.toUIMessageStreamResponse();
+	return result.toUIMessageStreamResponse({
+		onFinish: async ({ responseMessage }) => {
+			await appendToChatMessages(id, [responseMessage]);
+		},
+	});
 };
 
 // http://localhost:3000/api/chat?chatId=123
