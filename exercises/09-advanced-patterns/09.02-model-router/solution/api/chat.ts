@@ -1,35 +1,34 @@
-import { google } from '@ai-sdk/google';
+import { google } from "@ai-sdk/google";
 import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  generateText,
-  streamText,
-  type ModelMessage,
-  type UIMessage,
-} from 'ai';
+	convertToModelMessages,
+	createUIMessageStream,
+	createUIMessageStreamResponse,
+	generateText,
+	type ModelMessage,
+	streamText,
+	type UIMessage,
+} from "ai";
 
-const ADVANCED_MODEL = google('gemini-2.0-flash');
-const BASIC_MODEL = google('gemini-2.0-flash-lite');
+const ADVANCED_MODEL = google("gemini-2.5-flash");
+const BASIC_MODEL = google("gemini-2.5-flash-lite");
 
 export type MyMessage = UIMessage<{
-  model: 'advanced' | 'basic';
+	model: "advanced" | "basic";
 }>;
 
 export const POST = async (req: Request): Promise<Response> => {
-  const body = await req.json();
+	const body = await req.json();
 
-  const messages: MyMessage[] = body.messages;
+	const messages: MyMessage[] = body.messages;
 
-  const modelMessages: ModelMessage[] =
-    convertToModelMessages(messages);
+	const modelMessages: ModelMessage[] = convertToModelMessages(messages);
 
-  const stream = createUIMessageStream<MyMessage>({
-    execute: async ({ writer }) => {
-      console.time('Model Calculation Time');
-      const modelRouterResult = await generateText({
-        model: BASIC_MODEL,
-        system: `
+	const stream = createUIMessageStream<MyMessage>({
+		execute: async ({ writer }) => {
+			console.time("Model Calculation Time");
+			const modelRouterResult = await generateText({
+				model: BASIC_MODEL,
+				system: `
           You are a model router. Your job is to figure out whether to use an advanced model or a basic model.
 
           You will be given a conversation history. You will need to determine whether to use an advanced model or a basic model, based on the question being asked.
@@ -45,44 +44,38 @@ export const POST = async (req: Request): Promise<Response> => {
             Return 1 to choose the advanced model.
           </output-format>
         `,
-        messages: modelMessages,
-      });
+				messages: modelMessages,
+			});
 
-      console.timeEnd('Model Calculation Time');
-      console.log(
-        'modelRouterResult',
-        modelRouterResult.text.trim(),
-      );
+			console.timeEnd("Model Calculation Time");
+			console.log("modelRouterResult", modelRouterResult.text.trim());
 
-      const modelSelected =
-        modelRouterResult.text.trim() === '1'
-          ? 'advanced'
-          : // Note that the fallback is the basic model
-            'basic';
+			const modelSelected =
+				modelRouterResult.text.trim() === "1"
+					? "advanced"
+					: // Note that the fallback is the basic model
+						"basic";
 
-      const streamTextResult = streamText({
-        model:
-          modelSelected === 'advanced'
-            ? ADVANCED_MODEL
-            : BASIC_MODEL,
-        messages: modelMessages,
-      });
+			const streamTextResult = streamText({
+				model: modelSelected === "advanced" ? ADVANCED_MODEL : BASIC_MODEL,
+				messages: modelMessages,
+			});
 
-      writer.merge(
-        streamTextResult.toUIMessageStream({
-          messageMetadata: ({ part }) => {
-            if (part.type === 'start') {
-              return {
-                model: modelSelected,
-              };
-            }
-          },
-        }),
-      );
-    },
-  });
+			writer.merge(
+				streamTextResult.toUIMessageStream({
+					messageMetadata: ({ part }) => {
+						if (part.type === "start") {
+							return {
+								model: modelSelected,
+							};
+						}
+					},
+				}),
+			);
+		},
+	});
 
-  return createUIMessageStreamResponse({
-    stream,
-  });
+	return createUIMessageStreamResponse({
+		stream,
+	});
 };

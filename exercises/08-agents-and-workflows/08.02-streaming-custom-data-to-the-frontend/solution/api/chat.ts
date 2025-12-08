@@ -1,34 +1,34 @@
-import { google } from '@ai-sdk/google';
+import { google } from "@ai-sdk/google";
 import {
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  generateText,
-  streamText,
-  type UIMessage,
-} from 'ai';
+	createUIMessageStream,
+	createUIMessageStreamResponse,
+	generateText,
+	streamText,
+	type UIMessage,
+} from "ai";
 
 export type MyMessage = UIMessage<
-  unknown,
-  {
-    'slack-message': string;
-    'slack-message-feedback': string;
-  }
+	unknown,
+	{
+		"slack-message": string;
+		"slack-message-feedback": string;
+	}
 >;
 
 const formatMessageHistory = (messages: UIMessage[]) => {
-  return messages
-    .map((message) => {
-      return `${message.role}: ${message.parts
-        .map((part) => {
-          if (part.type === 'text') {
-            return part.text;
-          }
+	return messages
+		.map((message) => {
+			return `${message.role}: ${message.parts
+				.map((part) => {
+					if (part.type === "text") {
+						return part.text;
+					}
 
-          return '';
-        })
-        .join('')}`;
-    })
-    .join('\n');
+					return "";
+				})
+				.join("")}`;
+		})
+		.join("\n");
 };
 
 const WRITE_SLACK_MESSAGE_FIRST_DRAFT_SYSTEM = `You are writing a Slack message for a user based on the conversation history. Only return the Slack message, no other text.`;
@@ -44,71 +44,71 @@ const WRITE_SLACK_MESSAGE_FINAL_SYSTEM = `You are writing a Slack message based 
 `;
 
 export const POST = async (req: Request): Promise<Response> => {
-  const body: { messages: MyMessage[] } = await req.json();
-  const { messages } = body;
+	const body: { messages: MyMessage[] } = await req.json();
+	const { messages } = body;
 
-  const stream = createUIMessageStream<MyMessage>({
-    execute: async ({ writer }) => {
-      writer.write({
-        type: 'start',
-      });
+	const stream = createUIMessageStream<MyMessage>({
+		execute: async ({ writer }) => {
+			writer.write({
+				type: "start",
+			});
 
-      // Write Slack message
-      const writeSlackResult = streamText({
-        model: google('gemini-2.0-flash-001'),
-        system: WRITE_SLACK_MESSAGE_FIRST_DRAFT_SYSTEM,
-        prompt: `
+			// Write Slack message
+			const writeSlackResult = streamText({
+				model: google("gemini-2.5-flash-001"),
+				system: WRITE_SLACK_MESSAGE_FIRST_DRAFT_SYSTEM,
+				prompt: `
           Conversation history:
           ${formatMessageHistory(messages)}
         `,
-      });
+			});
 
-      const firstDraftId = crypto.randomUUID();
+			const firstDraftId = crypto.randomUUID();
 
-      let firstDraft = '';
+			let firstDraft = "";
 
-      for await (const part of writeSlackResult.textStream) {
-        firstDraft += part;
+			for await (const part of writeSlackResult.textStream) {
+				firstDraft += part;
 
-        writer.write({
-          type: 'data-slack-message',
-          data: firstDraft,
-          id: firstDraftId,
-        });
-      }
+				writer.write({
+					type: "data-slack-message",
+					data: firstDraft,
+					id: firstDraftId,
+				});
+			}
 
-      // Evaluate Slack message
-      const evaluateSlackResult = streamText({
-        model: google('gemini-2.0-flash-001'),
-        system: EVALUATE_SLACK_MESSAGE_SYSTEM,
-        prompt: `
+			// Evaluate Slack message
+			const evaluateSlackResult = streamText({
+				model: google("gemini-2.5-flash-001"),
+				system: EVALUATE_SLACK_MESSAGE_SYSTEM,
+				prompt: `
           Conversation history:
           ${formatMessageHistory(messages)}
 
           Slack message:
           ${firstDraft}
         `,
-      });
+			});
 
-      const feedbackId = crypto.randomUUID();
+			const feedbackId = crypto.randomUUID();
 
-      let feedback = '';
+			let feedback = "";
 
-      for await (const part of evaluateSlackResult.textStream) {
-        feedback += part;
+			for await (const part of evaluateSlackResult.textStream) {
+				feedback += part;
 
-        writer.write({
-          type: 'data-slack-message-feedback',
-          data: feedback,
-          id: feedbackId,
-        });
-      }
+				writer.write({
+					type: "data-slack-message-feedback",
+					data: feedback,
+					id: feedbackId,
+				});
+			}
 
-      // Write final Slack message
-      const finalSlackAttempt = streamText({
-        model: google('gemini-2.0-flash-001'),
-        system: WRITE_SLACK_MESSAGE_FINAL_SYSTEM,
-        prompt: `
+			// Write final Slack message
+			const finalSlackAttempt = streamText({
+				model: google("gemini-2.5-flash-001"),
+				system: WRITE_SLACK_MESSAGE_FINAL_SYSTEM,
+				prompt: `
           Conversation history:
           ${formatMessageHistory(messages)}
 
@@ -118,17 +118,17 @@ export const POST = async (req: Request): Promise<Response> => {
           Previous feedback:
           ${feedback}
         `,
-      });
+			});
 
-      writer.merge(
-        finalSlackAttempt.toUIMessageStream({
-          sendStart: false,
-        }),
-      );
-    },
-  });
+			writer.merge(
+				finalSlackAttempt.toUIMessageStream({
+					sendStart: false,
+				}),
+			);
+		},
+	});
 
-  return createUIMessageStreamResponse({
-    stream,
-  });
+	return createUIMessageStreamResponse({
+		stream,
+	});
 };

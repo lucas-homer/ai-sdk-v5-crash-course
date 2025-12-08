@@ -1,71 +1,67 @@
-import { google } from '@ai-sdk/google';
+import { google } from "@ai-sdk/google";
 import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  generateText,
-  streamText,
-  type ModelMessage,
-  type UIMessage,
-} from 'ai';
-import { GUARDRAIL_SYSTEM } from './guardrail-prompt.ts';
+	convertToModelMessages,
+	createUIMessageStream,
+	createUIMessageStreamResponse,
+	generateText,
+	type ModelMessage,
+	streamText,
+	type UIMessage,
+} from "ai";
+import { GUARDRAIL_SYSTEM } from "./guardrail-prompt.ts";
 
 export const POST = async (req: Request): Promise<Response> => {
-  const body = await req.json();
+	const body = await req.json();
 
-  const messages: UIMessage[] = body.messages;
+	const messages: UIMessage[] = body.messages;
 
-  const modelMessages: ModelMessage[] =
-    convertToModelMessages(messages);
+	const modelMessages: ModelMessage[] = convertToModelMessages(messages);
 
-  const stream = createUIMessageStream<UIMessage>({
-    execute: async ({ writer }) => {
-      console.time('Guardrail Time');
-      const guardrailResult = await generateText({
-        model: google('gemini-2.0-flash-lite'),
-        system: GUARDRAIL_SYSTEM,
-        messages: modelMessages,
-      });
+	const stream = createUIMessageStream<UIMessage>({
+		execute: async ({ writer }) => {
+			console.time("Guardrail Time");
+			const guardrailResult = await generateText({
+				model: google("gemini-2.5-flash-lite"),
+				system: GUARDRAIL_SYSTEM,
+				messages: modelMessages,
+			});
 
-      console.timeEnd('Guardrail Time');
+			console.timeEnd("Guardrail Time");
 
-      console.log(
-        'guardrailResult',
-        guardrailResult.text.trim(),
-      );
+			console.log("guardrailResult", guardrailResult.text.trim());
 
-      if (guardrailResult.text.trim() === '0') {
-        const textPartId = crypto.randomUUID();
+			if (guardrailResult.text.trim() === "0") {
+				const textPartId = crypto.randomUUID();
 
-        writer.write({
-          type: 'text-start',
-          id: textPartId,
-        });
+				writer.write({
+					type: "text-start",
+					id: textPartId,
+				});
 
-        writer.write({
-          type: 'text-delta',
-          id: textPartId,
-          delta: `We're sorry, but we can't process your request.`,
-        });
+				writer.write({
+					type: "text-delta",
+					id: textPartId,
+					delta: `We're sorry, but we can't process your request.`,
+				});
 
-        writer.write({
-          type: 'text-end',
-          id: textPartId,
-        });
+				writer.write({
+					type: "text-end",
+					id: textPartId,
+				});
 
-        return;
-      }
+				return;
+			}
 
-      const streamTextResult = streamText({
-        model: google('gemini-2.0-flash'),
-        messages: modelMessages,
-      });
+			const streamTextResult = streamText({
+				model: google("gemini-2.5-flash"),
+				messages: modelMessages,
+			});
 
-      writer.merge(streamTextResult.toUIMessageStream());
-    },
-  });
+			writer.merge(streamTextResult.toUIMessageStream());
+		},
+	});
 
-  return createUIMessageStreamResponse({
-    stream,
-  });
+	return createUIMessageStreamResponse({
+		stream,
+	});
 };
