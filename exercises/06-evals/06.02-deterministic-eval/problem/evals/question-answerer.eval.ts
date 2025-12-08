@@ -59,6 +59,15 @@ evalite("TS Release Notes", {
         <question>
         ${input}
         </question>
+
+        <links>
+        ${links.map((link) => `${link.title}: ${link.url}`).join("\n")}
+        </links>
+
+        <response>
+        Provide a succinct answer (under 500 characters) that includes relevant markdown links from the list above.
+        Format links as: [Link Text](URL)
+        </response>
       `,
 		});
 
@@ -68,13 +77,17 @@ evalite("TS Release Notes", {
 		{
 			name: "Includes Markdown Links",
 			scorer: ({ input, output, expected }) => {
-				// TODO: check if the output includes markdown links
+				// Check if the output includes markdown links using regex
+				// Markdown link format: [text](url)
+				const markdownLinkRegex = /\[.+?\]\(.+?\)/;
+				return markdownLinkRegex.test(output) ? 1 : 0;
 			},
 		},
 		{
 			name: "Output length",
 			scorer: ({ input, output, expected }) => {
-				// TODO: check if the output is less than 500 characters
+				// Check if the output is less than 500 characters
+				return output.length < 500 ? 1 : 0;
 			},
 		},
 	],
