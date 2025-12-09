@@ -1,5 +1,5 @@
 import { google } from "@ai-sdk/google";
-import { generateObject } from "ai";
+import { convertToModelMessages, generateObject } from "ai";
 import { createScorer } from "evalite";
 import { readFileSync } from "fs";
 import path from "path";
@@ -28,8 +28,35 @@ export const attributionToChainOfThoughtPaper = createScorer<string, string>({
 		const result = await generateObject({
 			model: google("gemini-2.5-flash"),
 			system: ATTRIBUTION_PROMPT,
-			messages: TODO, // TODO: Pass the chain of thought paper, the question and the answer given
-			schema: TODO, // TODO: Define the schema for the response
+			// TODO: Pass the chain of thought paper, the question and the answer given
+			messages: [
+				{
+					role: "user",
+					content: [
+						{
+							type: "file",
+							data: chainOfThoughtPaper,
+							mediaType: "application/pdf",
+						},
+						{
+							type: "text",
+							text: `The answer you are evaluating is:
+
+${output}
+
+The original question posed was:
+
+${input}`,
+						},
+					],
+				},
+			],
+			schema: z.object({
+				score: z.enum(["A", "B", "C", "D"]),
+				feedback: z
+					.string()
+					.describe("Short feedback message regarding attribution"),
+			}), // TODO: Define the schema for the response
 		});
 
 		// NOTE: it's important to use a string-based score for the
@@ -43,7 +70,7 @@ export const attributionToChainOfThoughtPaper = createScorer<string, string>({
 			B: 0.5,
 			C: 0,
 			D: 0,
-		};
+		} as Record<string, number>;
 
 		return {
 			score: scoreMap[result.object.score],
