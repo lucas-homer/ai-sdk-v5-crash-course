@@ -2,16 +2,18 @@ import { google } from "@ai-sdk/google";
 import {
 	createUIMessageStream,
 	createUIMessageStreamResponse,
-	generateText,
+	// generateText,
 	streamText,
 	type UIMessage,
 } from "ai";
 
-// TODO: replace all instances of UIMessage with MyMessage
+// replace all instances of UIMessage with MyMessage
 export type MyMessage = UIMessage<
 	unknown,
 	{
-		// TODO: declare custom data parts here
+		// declare custom data parts here
+		firstDraft: string;
+		evaluation: string;
 	}
 >;
 
@@ -44,56 +46,82 @@ const WRITE_SLACK_MESSAGE_FINAL_SYSTEM = `You are writing a Slack message based 
 `;
 
 export const POST = async (req: Request): Promise<Response> => {
-	// TODO: change to MyMessage[]
-	const body: { messages: UIMessage[] } = await req.json();
+	// change to MyMessage[]
+	const body: { messages: MyMessage[] } = await req.json();
 	const { messages } = body;
 
 	const stream = createUIMessageStream<MyMessage>({
 		execute: async ({ writer }) => {
-			// TODO: write a { type: 'start' } message via writer.write
-			TODO;
+			// write a { type: 'start' } message via writer.write
+			writer.write({ type: "start" });
 
-			// TODO - change to streamText and write to the stream as custom data parts
-			const writeSlackResult = await generateText({
-				model: google("gemini-2.5-flash-001"),
+			// change to streamText
+			const firstDraftResult = streamText({
+				model: google("gemini-2.5-flash-lite"),
 				system: WRITE_SLACK_MESSAGE_FIRST_DRAFT_SYSTEM,
 				prompt: `
           Conversation history:
           ${formatMessageHistory(messages)}
         `,
 			});
+			// write to the stream as custom data parts
+			const firstDraftId = crypto.randomUUID();
+			let firstDraft = "";
+			for await (const chunk of firstDraftResult.textStream) {
+				firstDraft += chunk;
+				writer.write({
+					type: "data-firstDraft",
+					id: firstDraftId,
+					data: firstDraft,
+				});
+			}
 
-			// TODO - change to streamText and write to the stream as custom data parts
-			const evaluateSlackResult = await generateText({
-				model: google("gemini-2.5-flash-001"),
+			// change to streamText
+			const evaluationResult = streamText({
+				model: google("gemini-2.5-flash-lite"),
 				system: EVALUATE_SLACK_MESSAGE_SYSTEM,
 				prompt: `
           Conversation history:
           ${formatMessageHistory(messages)}
 
           Slack message:
-          ${writeSlackResult.text}
+          ${firstDraftResult.text}
         `,
 			});
+			// write to the stream as custom data parts
+			const evaluationId = crypto.randomUUID();
+			let evaluation = "";
+			for await (const chunk of evaluationResult.textStream) {
+				evaluation += chunk;
+				writer.write({
+					type: "data-evaluation",
+					id: evaluationId,
+					data: evaluation,
+				});
+			}
 
 			const finalSlackAttempt = streamText({
-				model: google("gemini-2.5-flash-001"),
+				model: google("gemini-2.5-flash-lite"),
 				system: WRITE_SLACK_MESSAGE_FINAL_SYSTEM,
 				prompt: `
           Conversation history:
           ${formatMessageHistory(messages)}
 
           First draft:
-          ${writeSlackResult.text}
+          ${firstDraftResult.text}
 
           Previous feedback:
-          ${evaluateSlackResult.text}
+          ${evaluationResult.text}
         `,
 			});
 
-			// TODO: merge the final slack attempt into the stream,
+			// merge the final slack attempt into the stream,
 			// sending sendStart: false
-			writer.TODO;
+			writer.merge(
+				finalSlackAttempt.toUIMessageStream({
+					sendStart: false,
+				}),
+			);
 		},
 	});
 
