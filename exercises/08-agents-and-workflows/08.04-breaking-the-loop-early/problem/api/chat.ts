@@ -2,9 +2,11 @@ import { google } from "@ai-sdk/google";
 import {
 	createUIMessageStream,
 	createUIMessageStreamResponse,
+	streamObject,
 	streamText,
 	type UIMessage,
 } from "ai";
+import z from "zod";
 
 export type MyMessage = UIMessage<
 	unknown,
@@ -55,7 +57,7 @@ export const POST = async (req: Request): Promise<Response> => {
 			while (step < 2) {
 				// Write Slack message
 				const writeSlackResult = streamText({
-					model: google("gemini-2.5-flash-001"),
+					model: google("gemini-2.5-flash-lite"),
 					system: WRITE_SLACK_MESSAGE_FIRST_DRAFT_SYSTEM,
 					prompt: `
           Conversation history:
@@ -85,11 +87,25 @@ export const POST = async (req: Request): Promise<Response> => {
 
 				mostRecentDraft = draft;
 
+				const schema = z.object({
+					feedback: z
+						.string()
+						.optional()
+						.describe(
+							"The feedback about the most recent draft. Only return this if the draft is not good enough.",
+						),
+					isGoodEnough: z
+						.boolean()
+						.describe(
+							"Whether the most recent draft is good enough to stop the loop.",
+						),
+				});
+
 				// TODO: change this to streamObject, and get it to return
 				// the feedback as a string, as well as whether we should
 				// break the loop early (that the message is good enough)
-				const evaluateSlackResult = streamText({
-					model: google("gemini-2.5-flash-001"),
+				const evaluateSlackResult = streamObject({
+					model: google("gemini-2.5-flash-lite"),
 					system: EVALUATE_SLACK_MESSAGE_SYSTEM,
 					prompt: `
             Conversation history:
@@ -101,24 +117,29 @@ export const POST = async (req: Request): Promise<Response> => {
             Previous feedback (if any):
             ${mostRecentFeedback}
           `,
+					schema,
 				});
 
 				const feedbackId = crypto.randomUUID();
 
-				let feedback = "";
-
-				for await (const part of evaluateSlackResult.textStream) {
-					feedback += part;
-
-					writer.write({
-						type: "data-slack-message-feedback",
-						data: feedback,
-						id: feedbackId,
-					});
+				for await (const part of evaluateSlackResult.partialObjectStream) {
+					if (part.feedback) {
+						writer.write({
+							type: "data-slack-message-feedback",
+							data: part.feedback,
+							id: feedbackId,
+						});
+					}
 				}
 
-				mostRecentFeedback = feedback;
-
+				const evaluationObject = await evaluateSlackResult.object;
+				if (evaluationObject.isGoodEnough) {
+					break;
+				}
+				if (!evaluationObject.feedback) {
+					throw new Error("No feedback provided by the LLM.");
+				}
+				mostRecentFeedback = evaluationObject.feedback;
 				step++;
 			}
 
