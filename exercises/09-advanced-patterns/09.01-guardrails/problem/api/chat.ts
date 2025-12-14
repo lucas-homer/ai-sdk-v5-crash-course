@@ -23,7 +23,11 @@ export const POST = async (req: Request): Promise<Response> => {
 			// TODO: Use generateText to call a model, passing in the modelMessages
 			// and the GUARDRAIL_SYSTEM prompt.
 			//
-			const guardrailResult = TODO;
+			const guardrailResult = await generateText({
+				model: google("gemini-2.5-flash-lite"),
+				system: GUARDRAIL_SYSTEM,
+				messages: modelMessages,
+			});
 
 			console.timeEnd("Guardrail Time");
 
@@ -34,7 +38,23 @@ export const POST = async (req: Request): Promise<Response> => {
 			// parts. Then, do an early return to prevent the rest of the
 			// stream from running.
 			// (make sure you trim the guardrailResult.text before checking it)
-			if (TODO) {
+			if (guardrailResult.text.trim() === "0") {
+				const textId = crypto.randomUUID();
+				writer.write({
+					type: "text-start",
+					id: textId,
+				});
+				writer.write({
+					type: "text-delta",
+					id: textId,
+					delta:
+						"I'm sorry, but I'm not sure how to help you with that. Please try asking me something else.",
+				});
+				writer.write({
+					type: "text-end",
+					id: textId,
+				});
+				return;
 			}
 
 			const streamTextResult = streamText({
