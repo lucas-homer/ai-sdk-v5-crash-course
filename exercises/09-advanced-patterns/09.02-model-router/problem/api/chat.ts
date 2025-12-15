@@ -11,7 +11,22 @@ import {
 
 const ADVANCED_MODEL = google("gemini-2.5-flash");
 const BASIC_MODEL = google("gemini-2.5-flash-lite");
+const MODEL_ROUTER_PROMPT = `
+  You are a model router. Your job is to figure out whether to use an advanced model or a basic model.
 
+  You will be given a conversation history. You will need to determine whether to use an advanced model or a basic model, based on the question being asked.
+
+  <rules>
+    - If the question is about something trivial, use the basic model.
+    - If the question involves any kind of counting or math, use the advanced model.
+  </rules>
+
+  <output-format>
+    Return a single number: 0 or 1.
+    Return 0 to choose the basic model.
+    Return 1 to choose the advanced model.
+  </output-format>
+`;
 export type MyMessage = UIMessage<{
 	model: "advanced" | "basic";
 }>;
@@ -28,14 +43,19 @@ export const POST = async (req: Request): Promise<Response> => {
 			console.time("Model Calculation Time");
 			// TODO: Use generateText to call a model, passing in the modelMessages
 			// and writing your own system prompt.
-			const modelRouterResult = TODO;
+			const modelRouterResult = await generateText({
+				model: BASIC_MODEL,
+				system: MODEL_ROUTER_PROMPT,
+				messages: modelMessages,
+			});
 
 			console.timeEnd("Model Calculation Time");
 			console.log("modelRouterResult", modelRouterResult.text.trim());
 
 			// TODO: Use the modelRouterResult to determine which model to use.
 			// If we can't determine which model to use, use the basic model.
-			const modelSelected: "advanced" | "basic" = TODO;
+			const modelSelected: "advanced" | "basic" =
+				modelRouterResult.text.trim() === "1" ? "advanced" : "basic";
 
 			const streamTextResult = streamText({
 				model: modelSelected === "advanced" ? ADVANCED_MODEL : BASIC_MODEL,
@@ -46,7 +66,11 @@ export const POST = async (req: Request): Promise<Response> => {
 				streamTextResult.toUIMessageStream({
 					// TODO: Add the model to the message metadata, so that
 					// the frontend can display it.
-					messageMetadata: TODO,
+					messageMetadata: ({ part }) => {
+						if (part.type === "start") {
+							return { model: modelSelected };
+						}
+					},
 				}),
 			);
 		},
